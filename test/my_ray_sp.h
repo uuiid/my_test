@@ -9,6 +9,7 @@
 #include <fstream>
 #include <vector>
 
+
 namespace sph {
 
 	struct light {
@@ -20,10 +21,17 @@ namespace sph {
 	struct Material
 	{
 
-		Material(const Vec3f &color) : deffuse_color(color) {}
-		Material() : deffuse_color() {}
+		Material(const Vec2f &albedo, const Vec3f &color, const float specular) 
+			: albedo(albedo), deffuse_color(color),specular_exponent(specular) {}
+		Material() : albedo(1,0), deffuse_color(),specular_exponent() {}
+		Vec2f albedo;
 		Vec3f deffuse_color;
-
+		float specular_exponent;
+		
+		float reflect(const Vec3f &light_direction,const Vec3f &dir ,const Vec3f &N) {
+			Vec3f half_light_view = (light_direction - dir).normalize(1.f);
+			return powf(std::max(half_light_view*N,0.f), specular_exponent);
+		}
 	};
 
 
@@ -45,7 +53,7 @@ namespace sph {
 			float d2 = L * L - tca * tca;
 			if (d2 > radius*radius) return false;
 			
-			float thc = sqrtf(radius*radius - d2 * d2);
+			float thc = sqrtf(radius*radius - d2);
 			t0 = tca - thc;
 			float t1 = tca + thc;
 			if (t0 < 0) t0 = t1;

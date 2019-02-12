@@ -50,9 +50,9 @@ bool scene_intersect(
 	const Vec3f &orig,
 	const Vec3f &dir,
 	const std::vector<sph::Sphere> &sphere,
-	Vec3f &hit,
+	Vec3f &hit_point,
 	Vec3f &N,
-	sph::Material &material) //计算交叉光线后返回的颜色
+	sph::Material &material) //计算是否交叉光线
 {
 	float sphere_dir = std::numeric_limits<float>::max();
 	for (size_t i = 0; i < sphere.size(); i++)
@@ -61,8 +61,8 @@ bool scene_intersect(
 		if (sphere[i].ray_intersect(orig,dir,dist_i) && dist_i<sphere_dir)
 		{
 			sphere_dir = dist_i;
-			hit = orig + dir * dist_i;
-			N = (hit - sphere[i].center).normalize(1.f);
+			hit_point = orig + dir * dist_i;
+			N = (hit_point - sphere[i].center).normalize(1.f);
 			material = sphere[i].material;
 		}		
 	}
@@ -82,14 +82,28 @@ Vec3f cast_ray(const Vec3f &orig,
 		return Vec3f(0.f, 0.f, 0.f);//背景颜色
 	}
 
-	float deffuse_light_intensity = 0;
+	float deffuse_light_intensity = 0, specular_light_intensity = 0;
 	for (size_t i = 0; i < light.size(); i++)
 	{
 		Vec3f light_dir = (light[i].position - point).normalize(1.f);
-		deffuse_light_intensity = light[i].intensity*std::max(0.f, light_dir*N);
-	}
+		float light_distance = (light[i].position - point).norm();
+		
+		Vec3f shadow_orig = light_dir * N < 0 ? point - N * 1e-3 : point + N * 1e-3;//point - N * 1e-3;//
+		Vec3f shadow_point, shadow_N;
+		sph::Material temp_material;
+		if (scene_intersect(shadow_orig, light_dir, sphere, shadow_point, shadow_N, temp_material) &&
+			(shadow_point - shadow_orig).norm() < light_distance) {
+			continue;
+		}
 
-	return material.deffuse_color * deffuse_light_intensity;
+		deffuse_light_intensity  += light[i].intensity * std::max(0.f, light_dir*N);
+		specular_light_intensity += material.reflect(light_dir, dir, N) *light[i].intensity;
+	}
+	/*
+	Vec3f specular_insiity = Vec3f(0.f, 0.f, 0.f);
+	specular_insiity = (Vec3f(1.f, 1.f, 1.f)) * specular_light_intensity *material.albedo[1];*/
+	return material.deffuse_color * deffuse_light_intensity*material.albedo[0] +
+		(Vec3f(1.f, 1.f, 1.f)) * specular_light_intensity * material.albedo[1];
 }
 
 /*
@@ -124,7 +138,7 @@ void render(const std::vector<sph::Sphere> &sphere, const std::vector<sph::light
 	{
 		for (size_t j = 0; j < width; j++)
 		{
-			float x = width/2  - (j + 0.5);
+			float x = -width/2  + (j + 0.5);
 			float y = height/2 - (i + 0.5);
 			float z = -sqrtf((width / 2) * (width / 2) + (height / 2)*(height / 2)) / tanf(fov / 2);
 			Vec3f dir = Vec3f(x, y, z).normalize(1.f);
@@ -190,7 +204,7 @@ void render(const std::vector<sph::Sphere> &sphere, const std::vector<sph::light
 		pimap[i*n + 3] = (unsigned char)255;
 	}
 
-	stbi_write_png("./my_write.png", width, height, n, pimap.data(), 0);
+	stbi_write_png("./my_write_2.png", width, height, n, pimap.data(), 0);
 	/*
 	std::ofstream ofs; // save the framebuffer to file
 	ofs.open("./out.png");
@@ -206,8 +220,8 @@ void render(const std::vector<sph::Sphere> &sphere, const std::vector<sph::light
 int main() {
 	
 	
-	sph::Material  blue(Vec3f(0.3, 0.5, 0.8));
-	sph::Material  yellow(Vec3f(0.7, 0.65, 0.3));
+	sph::Material    blue(Vec2f(0.6, 0.3), Vec3f(0.3, 0.5,  0.8), 200);
+	sph::Material  yellow(Vec2f(0.85, 0.05), Vec3f(0.7, 0.65, 0.3), 100);
 	
 	std::vector<sph::Sphere> spheres;
 	spheres.push_back(sph::Sphere(Vec3f(-3,      0, -16), 2, blue  ));
@@ -218,6 +232,8 @@ int main() {
 	
 	std::vector<sph::light> lights;
 	lights.push_back(sph::light(Vec3f(-20, 20, 20), 1.5));
+	lights.push_back(sph::light(Vec3f(30, 50, -15), 1.8));
+	lights.push_back(sph::light(Vec3f(30, 20, 30), 1.1));
 	render(spheres,lights);
 	return 0;
 }
